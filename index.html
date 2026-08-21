@@ -212,13 +212,28 @@
   function renderPage(num) {
     pageRendering = true;
     pdfDoc.getPage(num).then(function (page) {
-      const containerHeight = document.getElementById("canvas-wrap").clientHeight - 20;
+      const wrap = document.getElementById("canvas-wrap");
+      const availableWidth = wrap.clientWidth - 20;
+      const availableHeight = wrap.clientHeight - 20;
       const baseViewport = page.getViewport({ scale: 1 });
-      const scale = containerHeight / baseViewport.height;
+
+      // Fit to whichever dimension is tighter, so the canvas never gets
+      // shrunk further by CSS after we've sized it — that's what caused
+      // link hitboxes to drift out of alignment on narrow screens.
+      const scale = Math.min(
+        availableWidth / baseViewport.width,
+        availableHeight / baseViewport.height
+      );
       const viewport = page.getViewport({ scale: scale > 0 ? scale : 1 });
 
       canvas.height = viewport.height;
       canvas.width = viewport.width;
+      // Lock the CSS display size to match the native render size exactly,
+      // so the browser never rescales the canvas independently of the
+      // link-layer overlay sitting on top of it.
+      canvas.style.width = viewport.width + "px";
+      canvas.style.height = viewport.height + "px";
+
       linkLayer.style.width = viewport.width + "px";
       linkLayer.style.height = viewport.height + "px";
 
