@@ -1,0 +1,61 @@
+name: Fetch Slides PDF from Google Slides
+
+# Pulls the latest version of your Google Slides deck as a PDF and commits it
+# to the repo, so the viewer always shows the current slides.
+#
+# Runs:
+#   - automatically once a day (edit the cron line to change frequency)
+#   - any time you manually click "Run workflow" in the Actions tab
+#   - any time this workflow file itself is edited (useful for testing)
+
+on:
+  schedule:
+    - cron: "0 13 1 * *"   # 1:00 PM UTC on the 1st of each month — adjust as you like
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/fetch-slides.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download PDF from Google Slides
+        run: |
+          FILE_ID="12bPmPI0msUm4tOTMLfZaZZflP1M4uYmMHkzZ5aBR8H8"
+          URL="https://docs.google.com/presentation/d/${FILE_ID}/export/pdf"
+
+          echo "Fetching: $URL"
+          HTTP_CODE=$(curl -sL -w "%{http_code}" -o slides.pdf "$URL")
+
+          echo "HTTP status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Download failed with status $HTTP_CODE. Make sure the Google Slides file is shared as 'Anyone with the link can view'."
+            exit 1
+          fi
+
+          # Confirm we actually got a PDF, not an HTML error/login page
+          if ! file slides.pdf | grep -q "PDF"; then
+            echo "::error::Downloaded file is not a valid PDF (likely got a Google login/error page). Check sharing settings on the Slides file."
+            cat slides.pdf
+            exit 1
+          fi
+
+      - name: Commit updated PDF
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add slides.pdf
+          if ! git diff --cached --quiet; then
+            git commit -m "Update slides.pdf from Google Slides [skip ci]"
+            git push
+          else
+            echo "No changes to slides.pdf — already up to date."
+          fi
