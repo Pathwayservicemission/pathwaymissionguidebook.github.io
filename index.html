@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PDF Viewer</title>
 <style>
   * { box-sizing: border-box; }
@@ -114,9 +114,29 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
-  // ---- CONFIG: change this to your PDF's filename in the repo ----
-  const PDF_URL = "Missionary Guidebook  (1).pdf";
-  // ------------------------------------------------------------------
+  // ---- CONFIG ----
+  // Live source: tries to load straight from Google Slides on every page view.
+  // Leave blank to skip live-loading and just use the cached slides.pdf below.
+  const GOOGLE_SLIDES_FILE_ID = "12bPmPI0msUm4tOTMLfZaZZflP1M4uYmMHkzZ5aBR8H8";
+
+  // Fallback source: the cached copy GitHub Actions committed to the repo.
+  // Used automatically if the live load above fails for any reason
+  // (e.g. browser blocks the cross-site request).
+  // You can also override either source with ?pdf=yourfile.pdf in the URL.
+  const DEFAULT_PDF = "slides.pdf";
+  // -----------------
+
+  function resolvePdfUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get("pdf");
+    if (fromQuery) return fromQuery;
+    return DEFAULT_PDF;
+  }
+
+  const CACHED_PDF_URL = resolvePdfUrl();
+  const LIVE_PDF_URL = GOOGLE_SLIDES_FILE_ID
+    ? `https://docs.google.com/presentation/d/${GOOGLE_SLIDES_FILE_ID}/export/pdf`
+    : null;
 
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -250,17 +270,38 @@
     if (e.key === "ArrowRight") onNextPage();
   });
 
+  function loadFromCache(reason) {
+    if (reason) console.warn("Falling back to cached PDF:", reason);
+    loading.textContent = "Loading PDF…";
+    pdfjsLib
+      .getDocument(encodeURI(CACHED_PDF_URL))
+      .promise.then(function (doc) {
+        pdfDoc = doc;
+        loading.style.display = "none";
+        renderPage(pageNum);
+      })
+      .catch(function (err) {
+        loading.textContent = "Could not load PDF: " + err.message;
+      });
+  }
+
   loading.style.display = "block";
-  pdfjsLib
-    .getDocument(encodeURI(PDF_URL))
-    .promise.then(function (doc) {
-      pdfDoc = doc;
-      loading.style.display = "none";
-      renderPage(pageNum);
-    })
-    .catch(function (err) {
-      loading.textContent = "Could not load PDF: " + err.message;
-    });
+
+  if (LIVE_PDF_URL) {
+    // Try live Google Slides export first (no caching delay).
+    pdfjsLib
+      .getDocument(LIVE_PDF_URL)
+      .promise.then(function (doc) {
+        pdfDoc = doc;
+        loading.style.display = "none";
+        renderPage(pageNum);
+      })
+      .catch(function (err) {
+        loadFromCache(err.message);
+      });
+  } else {
+    loadFromCache();
+  }
 
   window.addEventListener("resize", function () {
     if (pdfDoc) queueRenderPage(pageNum);
